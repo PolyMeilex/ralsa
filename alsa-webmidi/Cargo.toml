@@ -1,0 +1,9 @@
+[package]
+name = "alsa-webmidi"
+version = "0.1.0"
+edition = "2021"
+
+[dependencies]
+ralsa-seq = { path = "../ralsa-seq" }
+alsa_ioctl = { path = "../alsa-ioctl" }
+nix = "*"

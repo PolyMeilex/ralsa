@@ -1,2 +1,2 @@
 [workspace]
-members = ["alsa-ioctl", "tools", "ralsa-seq"]
+members = ["alsa-ioctl", "tools", "ralsa-seq", "alsa-webmidi"]

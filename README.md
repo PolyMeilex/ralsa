@@ -10,3 +10,4 @@ I will mostly focus on MIDI related APIs as that is what I need, but the same id
 - `./alsa-ioctl` Bindings for ALSA kernel APIs
 - `./ralsa-seq` High level Rust API for MIDI IO
 - `./tools` Just some binaries used for testing 
+- `./alsa-webmidi` Experimenting with WebMIDI-like API for alsa-seq

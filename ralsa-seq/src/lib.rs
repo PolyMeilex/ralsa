@@ -146,6 +146,32 @@ pub struct Port {
     addr: Addr,
 }
 
+impl Port {
+    pub fn connect_src(&self, seq: &Seq, src: Addr) -> io::Result<()> {
+        let mut data: seq_ioctl::PortSubscribe = unsafe { std::mem::zeroed() };
+
+        data.sender = src;
+        data.dest = self.addr;
+
+        let fd = seq.inner.fd.as_raw_fd();
+        unsafe { seq_ioctl::subscribe_port(fd, &data) }?;
+
+        Ok(())
+    }
+
+    pub fn connect_dest(&self, seq: &Seq, dest: Addr) -> io::Result<()> {
+        let mut data: seq_ioctl::PortSubscribe = unsafe { std::mem::zeroed() };
+
+        data.sender = self.addr;
+        data.dest = dest;
+
+        let fd = seq.inner.fd.as_raw_fd();
+        unsafe { seq_ioctl::subscribe_port(fd, &data) }?;
+
+        Ok(())
+    }
+}
+
 pub struct ClientIter {
     seq: Seq,
     client_info: seq_ioctl::ClientInfo,

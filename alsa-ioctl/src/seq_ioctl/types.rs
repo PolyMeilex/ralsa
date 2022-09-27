@@ -154,7 +154,7 @@ impl EventType {
 
 /// Event address
 #[repr(C)]
-#[derive(Debug, Copy, Clone)]
+#[derive(Debug, Copy, Clone, Hash, PartialEq, Eq)]
 pub struct Addr {
     /// Client number: 0..255, 255 = broadcast to all clients
     pub client: c_uchar,

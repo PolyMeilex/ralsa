@@ -25,6 +25,15 @@ dependencies = [
 ]
 
 [[package]]
+name = "alsa-webmidi"
+version = "0.1.0"
+dependencies = [
+ "alsa_ioctl",
+ "nix 0.23.1",
+ "ralsa-seq",
+]
+
+[[package]]
 name = "alsa_ioctl"
 version = "0.1.0"
 dependencies = [
