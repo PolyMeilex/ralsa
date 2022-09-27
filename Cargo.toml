@@ -1,0 +1,2 @@
+[workspace]
+members = ["alsa-ioctl", "tools", "ralsa-seq"]

@@ -1,0 +1,20 @@
+[package]
+name = "ralsa-seq"
+version = "0.1.0"
+edition = "2021"
+
+[dependencies]
+alsa_ioctl = { path = "../alsa-ioctl" }
+nix = "0.24.1"
+
+num-traits = "0.2.15"
+num-derive = "0.3.3"
+streaming-iterator = "0.1.5"
+
+udev = "0.6.3"
+
+[[example]]
+name = "input"
+
+[[example]]
+name = "output"

@@ -1,0 +1,17 @@
+[package]
+name = "alsa_ioctl"
+version = "0.1.0"
+edition = "2021"
+
+authors = ["Poly <marynczak.bartlomiej@gmail.com>"]
+description = "ioctl bindings for alsa"
+keywords = ["alsa", "ioctl"]
+license = "MIT"
+documentation = "https://docs.rs/alsa_ioctl"
+
+[dependencies]
+nix = "0.24"
+bitflags = "1.3"
+
+[[example]]
+name = "seq"
