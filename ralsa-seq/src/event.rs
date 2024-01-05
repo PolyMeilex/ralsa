@@ -1,5 +1,6 @@
 use std::{borrow::Cow, time::Duration};
 
+use alsa_ioctl::seq_ioctl::QueueSkew;
 pub use alsa_ioctl::seq_ioctl::{
     self, Addr, Connect, EvCtrl, EvExt, EvNote, EvQueueControl, EvResult, QueueId,
 };
@@ -51,6 +52,7 @@ impl<'a> Event<'a> {
 
     #[allow(unused_unsafe)]
     pub unsafe fn read(buff: &'a [u8]) -> Event<'a> {
+        assert!(std::mem::size_of::<seq_ioctl::Event>() <= buff.len());
         let raw: &seq_ioctl::Event = unsafe { &*(buff.as_ptr() as *const _) };
 
         let kind = EventKind::from(raw.type_);
@@ -102,7 +104,7 @@ impl<'a> Event<'a> {
             EventTime::Tick(tick)
         } else {
             let time = unsafe { &self.raw.time.time };
-            EventTime::Time(Duration::new(time.tv_sec as u64, time.tv_nsec as u32))
+            EventTime::Time(Duration::new(time.tv_sec as u64, time.tv_nsec))
         }
     }
 
@@ -171,7 +173,7 @@ impl<'a> Event<'a> {
                 let value = unsafe {
                     Duration::new(
                         queue.param.time.time.tv_sec as u64,
-                        queue.param.time.time.tv_nsec as u32,
+                        queue.param.time.time.tv_nsec,
                     )
                 };
 
@@ -266,19 +268,159 @@ impl<'a> Event<'a> {
             | EventKind::UsrVar4 => EventData::Ext(&self.raw_extra),
         }
     }
+
+    pub fn event_with_data(&self) -> EventWithData {
+        match self.kind {
+            // system messages
+            // event data type = snd_seq_result
+            EventKind::System => EventWithData::System(unsafe { self.raw.data.result }),
+            EventKind::Result => EventWithData::Result(unsafe { self.raw.data.result }),
+
+            // note messages (channel specific)
+            // event data type = snd_seq_ev_note
+            EventKind::Note => EventWithData::Note(unsafe { self.raw.data.note }),
+            EventKind::Noteon => EventWithData::NoteOn(unsafe { self.raw.data.note }),
+            EventKind::Noteoff => EventWithData::NoteOff(unsafe { self.raw.data.note }),
+            EventKind::Keypress => EventWithData::KeyPress(unsafe { self.raw.data.note }),
+
+            // control messages (channel specific)
+            // event data type = snd_seq_ev_ctrl
+            // synchronisation messages
+            // event data type = snd_seq_ev_ctrl
+            EventKind::Controller => EventWithData::Controller(unsafe { self.raw.data.control }),
+            EventKind::Pgmchange => EventWithData::Pgmchange(unsafe { self.raw.data.control }),
+            EventKind::Chanpress => EventWithData::Chanpress(unsafe { self.raw.data.control }),
+            EventKind::Pitchbend => EventWithData::Pitchbend(unsafe { self.raw.data.control }),
+            EventKind::Control14 => EventWithData::Control14(unsafe { self.raw.data.control }),
+            EventKind::Nonregparam => EventWithData::Nonregparam(unsafe { self.raw.data.control }),
+            EventKind::Regparam => EventWithData::Regparam(unsafe { self.raw.data.control }),
+            EventKind::Songpos => EventWithData::Songpos(unsafe { self.raw.data.control }),
+            EventKind::Songsel => EventWithData::Songsel(unsafe { self.raw.data.control }),
+            EventKind::Qframe => EventWithData::Qframe(unsafe { self.raw.data.control }),
+            EventKind::Timesign => EventWithData::Timesign(unsafe { self.raw.data.control }),
+            EventKind::Keysign => EventWithData::Keysign(unsafe { self.raw.data.control }),
+
+            // timer messages
+            // event data type = snd_seq_ev_queue_control
+            EventKind::SyncPos => EventWithData::SyncPos {
+                queue: unsafe { self.raw.data.queue.queue },
+                position: unsafe { self.raw.data.queue.param.position },
+            },
+            EventKind::Tick => EventWithData::Tick {
+                queue: unsafe { self.raw.data.queue.queue },
+                position: unsafe { self.raw.data.queue.param.position },
+            },
+            EventKind::SetposTick => EventWithData::SetposTick {
+                queue: unsafe { self.raw.data.queue.queue },
+                position: unsafe { self.raw.data.queue.param.position },
+            },
+
+            EventKind::SetposTime => {
+                let queue = unsafe { &self.raw.data.queue };
+                let value = unsafe {
+                    Duration::new(
+                        queue.param.time.time.tv_sec as u64,
+                        queue.param.time.time.tv_nsec,
+                    )
+                };
+
+                EventWithData::SetposTime {
+                    queue: queue.queue,
+                    position: value,
+                }
+            }
+
+            EventKind::Tempo => {
+                let queue = unsafe { &self.raw.data.queue };
+                let value = unsafe { queue.param.value };
+
+                EventWithData::Tempo {
+                    queue: queue.queue,
+                    value,
+                }
+            }
+
+            EventKind::QueueSkew => {
+                let queue = unsafe { &self.raw.data.queue };
+                let skew = unsafe { queue.param.skew };
+
+                EventWithData::QueueSkew {
+                    queue: queue.queue,
+                    skew,
+                }
+            }
+
+            EventKind::Start => EventWithData::Start(unsafe { self.raw.data.queue.queue }),
+            EventKind::Continue => EventWithData::Continue(unsafe { self.raw.data.queue.queue }),
+            EventKind::Stop => EventWithData::Stop(unsafe { self.raw.data.queue.queue }),
+            EventKind::Clock => EventWithData::Clock(unsafe { self.raw.data.queue.queue }),
+
+            // others
+            // event data type = none
+            EventKind::TuneRequest => EventWithData::TuneRequest,
+            EventKind::Reset => EventWithData::Reset,
+            EventKind::Sensing => EventWithData::Sensing,
+            EventKind::None => EventWithData::None,
+
+            // system status messages (broadcast for subscribers)
+            // event data type = snd_seq_addr
+            EventKind::ClientStart => EventWithData::ClientStart(unsafe { self.raw.data.addr }),
+            EventKind::ClientExit => EventWithData::ClientExit(unsafe { self.raw.data.addr }),
+            EventKind::ClientChange => EventWithData::ClientChange(unsafe { self.raw.data.addr }),
+            EventKind::PortStart => EventWithData::PortStart(unsafe { self.raw.data.addr }),
+            EventKind::PortExit => EventWithData::PortExit(unsafe { self.raw.data.addr }),
+            EventKind::PortChange => EventWithData::PortChange(unsafe { self.raw.data.addr }),
+
+            // port connection changes
+            // event data type = snd_seq_connect
+            EventKind::PortSubscribed => {
+                EventWithData::PortSubscribed(unsafe { self.raw.data.connect })
+            }
+            EventKind::PortUnsubscribed => {
+                EventWithData::PortUnsubscribed(unsafe { self.raw.data.connect })
+            }
+
+            // echo back, kernel private messages
+            // event data type = any
+            // user-defined events with fixed length
+            // event data type = any
+            EventKind::Echo => EventWithData::Echo(unsafe { self.raw.data.raw8.d }),
+            EventKind::Oss => EventWithData::Oss(unsafe { self.raw.data.raw8.d }),
+            EventKind::Usr0 => EventWithData::Usr0(unsafe { self.raw.data.raw8.d }),
+            EventKind::Usr1 => EventWithData::Usr1(unsafe { self.raw.data.raw8.d }),
+            EventKind::Usr2 => EventWithData::Usr2(unsafe { self.raw.data.raw8.d }),
+            EventKind::Usr3 => EventWithData::Usr3(unsafe { self.raw.data.raw8.d }),
+            EventKind::Usr4 => EventWithData::Usr4(unsafe { self.raw.data.raw8.d }),
+            EventKind::Usr5 => EventWithData::Usr5(unsafe { self.raw.data.raw8.d }),
+            EventKind::Usr6 => EventWithData::Usr6(unsafe { self.raw.data.raw8.d }),
+            EventKind::Usr7 => EventWithData::Usr7(unsafe { self.raw.data.raw8.d }),
+            EventKind::Usr8 => EventWithData::Usr8(unsafe { self.raw.data.raw8.d }),
+            EventKind::Usr9 => EventWithData::Usr9(unsafe { self.raw.data.raw8.d }),
+
+            // variable length events
+            // event data type = snd_seq_ev_ext
+            // (SNDRV_SEQ_EVENT_LENGTH_VARIABLE must be set)
+            EventKind::Sysex => EventWithData::Sysex(&self.raw_extra),
+            EventKind::Bounce => EventWithData::Bounce(&self.raw_extra),
+            EventKind::UsrVar0 => EventWithData::UsrVar0(&self.raw_extra),
+            EventKind::UsrVar1 => EventWithData::UsrVar1(&self.raw_extra),
+            EventKind::UsrVar2 => EventWithData::UsrVar2(&self.raw_extra),
+            EventKind::UsrVar3 => EventWithData::UsrVar3(&self.raw_extra),
+            EventKind::UsrVar4 => EventWithData::UsrVar4(&self.raw_extra),
+        }
+    }
 }
 
 impl<'a> std::fmt::Debug for Event<'a> {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         f.debug_struct("Event")
-            .field("kind", &self.kind)
             .field("flags", &self.raw.flags)
             .field("tag", &self.tag())
             .field("queue", &self.queue())
             .field("time", &self.time())
             .field("source", &self.source())
             .field("destination", &self.destination())
-            .field("data", &self.data())
+            .field("kind", &self.event_with_data())
             .finish()
     }
 }
@@ -477,4 +619,147 @@ impl From<EventKind> for seq_ioctl::EventType {
     fn from(v: EventKind) -> Self {
         Self(v as u8)
     }
+}
+
+/// sequencer event type
+#[derive(Debug, Clone)]
+pub enum EventWithData<'a> {
+    /// system status; event data type = #snd_seq_result_t
+    System(EvResult),
+    /// returned result status; event data type = #snd_seq_result_t
+    Result(EvResult),
+
+    /// note on and off with duration; event data type = #snd_seq_ev_note_t
+    Note(EvNote),
+    /// note on; event data type = #snd_seq_ev_note_t
+    NoteOn(EvNote),
+    /// note off; event data type = #snd_seq_ev_note_t
+    NoteOff(EvNote),
+    /// key pressure change (aftertouch); event data type = #snd_seq_ev_note_t
+    KeyPress(EvNote),
+
+    /// controller; event data type = #snd_seq_ev_ctrl_t
+    Controller(EvCtrl),
+    /// program change; event data type = #snd_seq_ev_ctrl_t
+    Pgmchange(EvCtrl),
+    /// channel pressure; event data type = #snd_seq_ev_ctrl_t
+    Chanpress(EvCtrl),
+    /// pitchwheel; event data type = #snd_seq_ev_ctrl_t; data is from -8192 to 8191)
+    Pitchbend(EvCtrl),
+    /// 14 bit controller value; event data type = #snd_seq_ev_ctrl_t
+    Control14(EvCtrl),
+    /// 14 bit NRPN;  event data type = #snd_seq_ev_ctrl_t
+    Nonregparam(EvCtrl),
+    /// 14 bit RPN; event data type = #snd_seq_ev_ctrl_t
+    Regparam(EvCtrl),
+
+    /// SPP with LSB and MSB values; event data type = #snd_seq_ev_ctrl_t
+    Songpos(EvCtrl),
+    /// Song Select with song ID number; event data type = #snd_seq_ev_ctrl_t
+    Songsel(EvCtrl),
+    /// midi time code quarter frame; event data type = #snd_seq_ev_ctrl_t
+    Qframe(EvCtrl),
+    /// SMF Time Signature event; event data type = #snd_seq_ev_ctrl_t
+    Timesign(EvCtrl),
+    /// SMF Key Signature event; event data type = #snd_seq_ev_ctrl_t
+    Keysign(EvCtrl),
+
+    /// MIDI Real Time Start message; event data type = #snd_seq_ev_queue_control_t
+    Start(QueueId),
+    /// MIDI Real Time Continue message; event data type = #snd_seq_ev_queue_control_t
+    Continue(QueueId),
+    /// MIDI Real Time Stop message; event data type = #snd_seq_ev_queue_control_t
+    Stop(QueueId),
+    /// Set tick queue position; event data type = #snd_seq_ev_queue_control_t
+    SetposTick { queue: QueueId, position: u32 },
+    /// Set real-time queue position; event data type = #snd_seq_ev_queue_control_t
+    SetposTime { queue: QueueId, position: Duration },
+    /// (SMF) Tempo event; event data type = #snd_seq_ev_queue_control_t
+    Tempo { queue: QueueId, value: i32 },
+    /// MIDI Real Time Clock message; event data type = #snd_seq_ev_queue_control_t
+    Clock(QueueId),
+    /// MIDI Real Time Tick message; event data type = #snd_seq_ev_queue_control_t
+    Tick { queue: QueueId, position: u32 },
+    /// Queue timer skew; event data type = #snd_seq_ev_queue_control_t
+    QueueSkew { queue: QueueId, skew: QueueSkew },
+    /// Sync position changed; event data type = #snd_seq_ev_queue_control_t
+    SyncPos { queue: QueueId, position: u32 },
+
+    /// Tune request; event data type = none
+    TuneRequest,
+    /// Reset to power-on state; event data type = none
+    Reset,
+    /// Active sensing event; event data type = none
+    Sensing,
+
+    /// Echo-back event; event data type = any type
+    Echo([u8; 12]),
+    /// OSS emulation raw event; event data type = any type
+    Oss([u8; 12]),
+
+    /// New client has connected; event data type = #snd_seq_addr_t
+    ClientStart(Addr),
+    /// Client has left the system; event data type = #snd_seq_addr_t
+    ClientExit(Addr),
+    /// Client status/info has changed; event data type = #snd_seq_addr_t
+    ClientChange(Addr),
+    /// New port was created; event data type = #snd_seq_addr_t
+    PortStart(Addr),
+    /// Port was deleted from system; event data type = #snd_seq_addr_t
+    PortExit(Addr),
+    /// Port status/info has changed; event data type = #snd_seq_addr_t
+    PortChange(Addr),
+
+    /// Ports connected; event data type = #snd_seq_connect_t
+    PortSubscribed(Connect),
+    /// Ports disconnected; event data type = #snd_seq_connect_t
+    PortUnsubscribed(Connect),
+
+    /*
+        70-89:  synthesizer events - obsoleted
+    */
+    /// user-defined event; event data type = any (fixed size)
+    Usr0([u8; 12]),
+    /// user-defined event; event data type = any (fixed size)
+    Usr1([u8; 12]),
+    /// user-defined event; event data type = any (fixed size)
+    Usr2([u8; 12]),
+    /// user-defined event; event data type = any (fixed size)
+    Usr3([u8; 12]),
+    /// user-defined event; event data type = any (fixed size)
+    Usr4([u8; 12]),
+    /// user-defined event; event data type = any (fixed size)
+    Usr5([u8; 12]),
+    /// user-defined event; event data type = any (fixed size)
+    Usr6([u8; 12]),
+    /// user-defined event; event data type = any (fixed size)
+    Usr7([u8; 12]),
+    /// user-defined event; event data type = any (fixed size)
+    Usr8([u8; 12]),
+    /// user-defined event; event data type = any (fixed size)
+    Usr9([u8; 12]),
+
+    /*
+        100-118: instrument layer - obsoleted
+        119-129: reserved
+    */
+    /// system exclusive data (variable length);  event data type = #snd_seq_ev_ext_t
+    Sysex(&'a [u8]),
+    /// error event;  event data type = #snd_seq_ev_ext_t
+    Bounce(&'a [u8]),
+    /* 132-134: reserved */
+    /// reserved for user apps; event data type = #snd_seq_ev_ext_t
+    UsrVar0(&'a [u8]),
+    /// reserved for user apps; event data type = #snd_seq_ev_ext_t
+    UsrVar1(&'a [u8]),
+    /// reserved for user apps; event data type = #snd_seq_ev_ext_t
+    UsrVar2(&'a [u8]),
+    /// reserved for user apps; event data type = #snd_seq_ev_ext_t
+    UsrVar3(&'a [u8]),
+    /// reserved for user apps; event data type = #snd_seq_ev_ext_t
+    UsrVar4(&'a [u8]),
+
+    /* 150-151: kernel events with quote - DO NOT use in user clients */
+    /// NOP; ignored in any case"]
+    None,
 }

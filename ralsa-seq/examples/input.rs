@@ -2,7 +2,7 @@ use alsa_ioctl::seq_ioctl::{PortCapability, PortType};
 use nix::poll::PollFlags;
 use std::{ffi::CString, os::unix::prelude::AsRawFd};
 
-use ralsa_seq::event::EventKind;
+use ralsa_seq::event::EventWithData;
 
 fn main() -> Result<(), Box<dyn std::error::Error>> {
     let (seq, mut seq_input, _) = ralsa_seq::Seq::open()?;
@@ -23,28 +23,19 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
         nix::poll::poll(&mut [pool_fd], -1)?;
 
         while let Some(event) = seq_input.input_event(true) {
-            dbg!(&event);
+            // dbg!(&event);
 
-            match event.data() {
-                ralsa_seq::event::EventData::Ext(_ext) => {
-                    // println!("{:0X?}", &ext);
-                }
-                _ => {}
-            }
-
-            match event.kind() {
-                EventKind::Qframe | EventKind::Tick | EventKind::Clock => {
+            match event.event_with_data() {
+                EventWithData::Qframe(_) | EventWithData::Tick { .. } | EventWithData::Clock(_) => {
                     // continue;
                 }
-                EventKind::Sensing => {
+                EventWithData::Sensing => {
                     // continue;
                 }
-                EventKind::Noteon => {
-                    // seq.send_event()?;
-                    // dbg!(event);
-                }
+                EventWithData::NoteOn(_note) => {}
+                EventWithData::NoteOff(_note) => {}
                 _ => {
-                    // dbg!(event);
+                    dbg!(event);
                 }
             }
         }

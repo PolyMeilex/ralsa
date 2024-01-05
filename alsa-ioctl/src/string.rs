@@ -1,6 +1,7 @@
 use std::{fmt::Write, os::raw::c_uchar, str::Utf8Error};
 
 #[derive(Clone, Copy, PartialEq, Eq)]
+#[repr(transparent)]
 pub struct AsciiString<const S: usize>(pub [c_uchar; S]);
 
 impl<const S: usize> AsciiString<S> {
