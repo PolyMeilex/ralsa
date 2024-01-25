@@ -1,5 +1,7 @@
 use std::{io, os::unix::prelude::AsRawFd};
 
+use rustix::fd::{AsFd, RawFd};
+
 use super::{event, Seq};
 
 #[derive(Debug)]
@@ -22,12 +24,24 @@ impl SeqOutput {
     /// output buffer.  
     pub fn send(&mut self, event: &event::Event) -> io::Result<()> {
         let bytes = event.event_bytes();
-        let size = nix::unistd::write(self.seq.as_raw_fd(), bytes)?;
+        let size = rustix::io::write(&self.seq, bytes)?;
 
         if bytes.len() != size {
             unimplemented!("Message does not fit in the buffer");
         }
 
         Ok(())
+    }
+}
+
+impl AsRawFd for SeqOutput {
+    fn as_raw_fd(&self) -> RawFd {
+        self.seq.as_raw_fd()
+    }
+}
+
+impl AsFd for SeqOutput {
+    fn as_fd(&self) -> std::os::fd::BorrowedFd<'_> {
+        self.seq.as_fd()
     }
 }

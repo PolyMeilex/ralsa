@@ -7,3 +7,4 @@ edition = "2021"
 ralsa-seq = { path = "../ralsa-seq" }
 alsa_ioctl = { path = "../alsa-ioctl" }
 nix = "*"
+rustix = { version = "0.38.30", features = ["event"] }

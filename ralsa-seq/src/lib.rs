@@ -1,13 +1,16 @@
 use std::{
     ffi::CStr,
     io,
-    os::unix::prelude::{AsRawFd, FromRawFd, OwnedFd, RawFd},
+    os::{
+        fd::AsFd,
+        unix::prelude::{AsRawFd, OwnedFd, RawFd},
+    },
     path::{Path, PathBuf},
     sync::Arc,
 };
 
 use alsa_ioctl::seq_ioctl::{self, Addr, PortCapability, PortType};
-use nix::{fcntl::OFlag, sys::stat::Mode};
+use rustix::fs::{open, Mode, OFlags};
 
 // const SND_SEQ_OBUF_SIZE: usize = 16 * 1024; /* default size */
 const SEQ_INPUT_BUF_SIZE: usize = 500; /* in event_size aligned */
@@ -55,24 +58,19 @@ impl Seq {
     where
         P: AsRef<Path>,
     {
-        let fd = nix::fcntl::open(
+        let fd = open(
             path.as_ref(),
-            OFlag::O_RDWR | OFlag::O_NONBLOCK,
+            OFlags::RDWR | OFlags::NONBLOCK,
             Mode::empty(),
         )?;
 
-        let mut version = 0;
-        unsafe { seq_ioctl::pversion(fd, &mut version)? };
-
-        let mut client_id = 0;
-        unsafe { seq_ioctl::client_id(fd, &mut client_id)? };
-
-        let fd = unsafe { OwnedFd::from_raw_fd(fd) };
+        let _version = seq_ioctl::pversion(&fd)?;
+        let client_id = seq_ioctl::client_id(&fd)?;
 
         let seq = Seq {
             inner: Arc::new(SeqInner {
                 fd,
-                client_id: client_id as u32,
+                client_id: client_id.0 as u32,
             }),
         };
 
@@ -89,7 +87,7 @@ impl Seq {
     pub fn create_port(&self, mut info: seq_ioctl::PortInfo) -> io::Result<Port> {
         info.addr.client = self.inner.client_id as u8;
 
-        unsafe { seq_ioctl::create_port(self.as_raw_fd(), &mut info)? };
+        seq_ioctl::create_port(self, &mut info)?;
 
         Ok(Port { addr: info.addr })
     }
@@ -119,9 +117,7 @@ impl Seq {
         let mut port_info: seq_ioctl::PortInfo = unsafe { std::mem::zeroed() };
         port_info.addr = port.addr;
 
-        unsafe {
-            seq_ioctl::delete_port(self.as_raw_fd(), &port_info)?;
-        }
+        seq_ioctl::delete_port(self, port_info)?;
 
         Ok(())
     }
@@ -141,6 +137,12 @@ impl AsRawFd for Seq {
     }
 }
 
+impl AsFd for Seq {
+    fn as_fd(&self) -> std::os::fd::BorrowedFd<'_> {
+        self.inner.fd.as_fd()
+    }
+}
+
 #[derive(Clone, Debug)]
 pub struct Port {
     addr: Addr,
@@ -153,8 +155,7 @@ impl Port {
         data.sender = src;
         data.dest = self.addr;
 
-        let fd = seq.inner.fd.as_raw_fd();
-        unsafe { seq_ioctl::subscribe_port(fd, &data) }?;
+        seq_ioctl::subscribe_port(seq, data)?;
 
         Ok(())
     }
@@ -165,8 +166,7 @@ impl Port {
         data.sender = self.addr;
         data.dest = dest;
 
-        let fd = seq.inner.fd.as_raw_fd();
-        unsafe { seq_ioctl::subscribe_port(fd, &data) }?;
+        seq_ioctl::subscribe_port(seq, data)?;
 
         Ok(())
     }
@@ -186,7 +186,7 @@ impl ClientIter {
 
     /// Copy free version of `Iterator::next`
     pub fn next_client(&mut self) -> Option<&seq_ioctl::ClientInfo> {
-        unsafe { seq_ioctl::query_next_client(self.seq.as_raw_fd(), &mut self.client_info).ok()? };
+        seq_ioctl::query_next_client(&self.seq, &mut self.client_info).ok()?;
         Some(&self.client_info)
     }
 }
@@ -214,7 +214,7 @@ impl PortIter {
 
     /// Copy free version of `Iterator::next`
     pub fn next_port(&mut self) -> Option<&seq_ioctl::PortInfo> {
-        unsafe { seq_ioctl::query_next_port(self.seq.as_raw_fd(), &mut self.port_info).ok()? };
+        seq_ioctl::query_next_port(&self.seq, &mut self.port_info).ok()?;
         Some(&self.port_info)
     }
 }

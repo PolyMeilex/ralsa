@@ -1,4 +1,4 @@
-use crate::{bitfield_unit::BitfieldUnit, string::AsciiString};
+use super::super::{bitfield_unit::BitfieldUnit, string::AsciiString};
 use bitflags::bitflags;
 use std::os::raw::{c_char, c_int, c_uchar, c_uint, c_ushort, c_void};
 
@@ -160,6 +160,20 @@ pub struct Addr {
     pub client: c_uchar,
     /// Port within client: 0..255, 255 = broadcast to all ports
     pub port: c_uchar,
+}
+
+impl Addr {
+    /// Broadcasting to subscribers
+    pub const SUBSCRIBERS: Self = Self {
+        client: address::SUBSCRIBERS,
+        port: address::UNKNOWN,
+    };
+
+    /// Broadcasting to all clients/ports
+    pub const BROADCAST: Self = Self {
+        client: address::BROADCAST,
+        port: address::BROADCAST,
+    };
 }
 
 /// Port connection
@@ -488,16 +502,18 @@ pub struct RunningInfo {
     reserved: [c_uchar; 12usize],
 }
 
-/// known client numbers
-pub mod client_id {
-    use super::*;
+#[repr(transparent)]
+#[derive(Debug, Copy, Clone, PartialEq, Eq)]
+pub struct ClientId(pub c_int);
 
-    pub const SYSTEM: c_uchar = 0;
+/// known client numbers
+impl ClientId {
+    pub const SYSTEM: Self = Self(0);
     /* internal client numbers */
     /// midi through
-    pub const DUMMY: c_uchar = 14;
+    pub const DUMMY: Self = Self(14);
     /// oss sequencer emulator
-    pub const OSS: c_uchar = 15;
+    pub const OSS: Self = Self(15);
 }
 
 /// client types

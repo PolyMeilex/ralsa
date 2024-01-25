@@ -1,6 +1,6 @@
 use alsa_ioctl::seq_ioctl::{PortCapability, PortType};
-use nix::poll::PollFlags;
-use std::{ffi::CString, os::unix::prelude::AsRawFd};
+use rustix::event::PollFlags;
+use std::ffi::CString;
 
 use ralsa_seq::event::EventWithData;
 
@@ -15,15 +15,13 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
     let kind = PortType::MIDI_GENERIC | PortType::APPLICATION;
     let _port = seq.create_simple_port(&name, capability, kind)?;
 
-    let fd = seq_input.as_raw_fd();
-
-    let pool_fd = nix::poll::PollFd::new(fd, PollFlags::POLLIN);
+    let mut pool_fds = [rustix::event::PollFd::new(&seq, PollFlags::IN)];
 
     loop {
-        nix::poll::poll(&mut [pool_fd], -1)?;
+        rustix::event::poll(&mut pool_fds, -1)?;
 
         while let Some(event) = seq_input.input_event(true) {
-            // dbg!(&event);
+            dbg!(&event);
 
             match event.event_with_data() {
                 EventWithData::Qframe(_) | EventWithData::Tick { .. } | EventWithData::Clock(_) => {
@@ -34,9 +32,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
                 }
                 EventWithData::NoteOn(_note) => {}
                 EventWithData::NoteOff(_note) => {}
-                _ => {
-                    dbg!(event);
-                }
+                _ => {}
             }
         }
     }

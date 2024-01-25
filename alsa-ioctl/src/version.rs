@@ -10,34 +10,33 @@
        SNDRV_PROTOCOL_MINOR(kversion) != SNDRV_PROTOCOL_MINOR(uversion)))
  */
 
-pub struct Version {
-    val: u32,
-}
+#[repr(transparent)]
+pub struct Version(u32);
 
 impl Version {
     pub fn new(major: u32, minor: u32, subminor: u32) -> Self {
         let val = ((major) << 16) | ((minor) << 8) | (subminor);
-        Self { val }
+        Self(val)
     }
 
-    pub fn from_val(val: u32) -> Self {
-        Self { val }
+    pub fn from_raw(val: u32) -> Self {
+        Self(val)
     }
 
-    pub fn val(&self) -> u32 {
-        self.val
+    pub fn raw(&self) -> u32 {
+        self.0
     }
 
     pub fn major(&self) -> u32 {
-        (self.val >> 16) & 0xffff
+        (self.0 >> 16) & 0xffff
     }
 
     pub fn minor(&self) -> u32 {
-        (self.val >> 8) & 0xff
+        (self.0 >> 8) & 0xff
     }
 
     pub fn subminor(&self) -> u32 {
-        self.val & 0xff
+        self.0 & 0xff
     }
 
     pub fn check_protocol_incompatible(&self, version: Self) -> bool {
@@ -48,5 +47,15 @@ impl Version {
         let uminor = version.minor();
 
         kmajor != umajor || kminor != uminor
+    }
+}
+
+impl std::fmt::Debug for Version {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        f.debug_struct("Version")
+            .field("major", &self.major())
+            .field("minor", &self.minor())
+            .field("subminor", &self.subminor())
+            .finish()
     }
 }

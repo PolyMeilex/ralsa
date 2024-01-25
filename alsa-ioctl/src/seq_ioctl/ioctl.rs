@@ -1,16 +1,49 @@
-use nix::libc::c_int;
-use nix::{ioctl_read, ioctl_readwrite, ioctl_write_ptr};
+use std::os::fd::AsFd;
+
+use rustix::{
+    io::Result,
+    ioctl::{ioctl, Getter, ReadOpcode, ReadWriteOpcode, Setter, Updater, WriteOpcode},
+};
+
+use crate::Version;
 
 use super::types;
 
+macro_rules! ioctl_readwrite {
+    ($name:ident, $ioty:expr, $nr:expr, $ty:ty) => {
+        pub fn $name(fd: impl AsFd, data: &mut $ty) -> Result<()> {
+            type Opcode = ReadWriteOpcode<$ioty, $nr, $ty>;
+            unsafe { ioctl(fd, Updater::<Opcode, $ty>::new(data)) }
+        }
+    };
+}
+
+macro_rules! ioctl_read {
+    ($name:ident, $ioty:expr, $nr:expr, $ty:ty) => {
+        pub fn $name(fd: impl AsFd) -> Result<$ty> {
+            type Opcode = ReadOpcode<$ioty, $nr, $ty>;
+            unsafe { ioctl(fd, Getter::<Opcode, $ty>::new()) }
+        }
+    };
+}
+
+macro_rules! ioctl_write_ptr {
+    ($name:ident, $ioty:expr, $nr:expr, $ty:ty) => {
+        pub fn $name(fd: impl AsFd, data: $ty) -> Result<()> {
+            type Opcode = WriteOpcode<$ioty, $nr, $ty>;
+            unsafe { ioctl(fd, Setter::<Opcode, $ty>::new(data)) }
+        }
+    };
+}
+
 // #define SNDRV_SEQ_IOCTL_PVERSION	_IOR ('S', 0x00, int)
 ioctl_read! {
-    pversion, b'S', 0x00, c_int
+    pversion, b'S', 0x00, Version
 }
 
 // #define SNDRV_SEQ_IOCTL_CLIENT_ID	_IOR ('S', 0x01, int)
 ioctl_read! {
-    client_id, b'S', 0x01, c_int
+    client_id, b'S', 0x01, types::ClientId
 }
 
 // #define SNDRV_SEQ_IOCTL_SYSTEM_INFO	_IOWR('S', 0x02, struct snd_seq_system_info)

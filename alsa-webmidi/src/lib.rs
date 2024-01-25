@@ -1,13 +1,12 @@
 use std::{
     collections::HashMap,
     ffi::CString,
-    os::unix::prelude::AsRawFd,
     sync::{Arc, Mutex},
 };
 
 use alsa_ioctl::seq_ioctl::{Addr, PortCapability, PortInfo, PortType};
-use nix::poll::PollFlags;
 use ralsa_seq::{Port, Seq, SeqOutput};
+use rustix::event::{PollFd, PollFlags};
 
 type OpenInputs = Arc<Mutex<HashMap<Addr, Box<dyn FnMut(ralsa_seq::event::Event) + Send>>>>;
 
@@ -43,12 +42,11 @@ impl MIDIAccess {
 
         let arc = open_inputs.clone();
         let seq_input = std::thread::spawn(move || {
-            let fd = seq_input.as_raw_fd();
-
-            let pool_fd = nix::poll::PollFd::new(fd, PollFlags::POLLIN);
+            let fd = seq_input.seq().clone();
+            let mut pool_fd = [PollFd::new(&fd, PollFlags::IN)];
 
             loop {
-                nix::poll::poll(&mut [pool_fd], -1).unwrap();
+                rustix::event::poll(&mut pool_fd, -1).unwrap();
 
                 while let Some(event) = seq_input.input_event(true) {
                     if let Some(cb) = arc.lock().unwrap().get_mut(event.source()) {

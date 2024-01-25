@@ -1,43 +1,33 @@
-use nix::{
-    fcntl::OFlag,
-    sys::stat::Mode,
-    unistd::{read, sysconf, SysconfVar},
+use rustix::{
+    fs::{Mode, OFlags},
+    io::read,
+    param::page_size,
 };
 
 use alsa_ioctl::seq_ioctl::{self, Event, PortCapability, PortType};
 
 fn main() -> Result<(), Box<dyn std::error::Error>> {
-    let fd = nix::fcntl::open("/dev/snd/seq", OFlag::O_RDWR, Mode::empty())?;
+    let fd = rustix::fs::open("/dev/snd/seq", OFlags::RDWR, Mode::empty())?;
 
-    let mut version = 0;
-    unsafe {
-        seq_ioctl::pversion(fd, &mut version)?;
-    }
-
+    let version = seq_ioctl::pversion(&fd)?;
     dbg!(version);
 
-    let mut client_id = 0;
-    unsafe {
-        seq_ioctl::client_id(fd, &mut client_id)?;
-    }
-
+    let client_id = seq_ioctl::client_id(&fd)?;
     dbg!(client_id);
 
     let mut port: seq_ioctl::PortInfo = unsafe { std::mem::zeroed() };
-    port.addr.client = client_id as u8;
+    port.addr.client = client_id.0 as u8;
     port.capability = PortCapability::WRITE | PortCapability::SUBS_WRITE;
     port.type_ = PortType::MIDI_GENERIC | PortType::APPLICATION;
 
-    unsafe {
-        seq_ioctl::create_port(fd, &mut port)?;
-    }
+    seq_ioctl::create_port(&fd, &mut port)?;
 
-    let page_size = sysconf(SysconfVar::PAGE_SIZE)?.unwrap() as usize;
+    let page_size = page_size();
 
     loop {
         let mut buff = vec![0u8; page_size];
 
-        let len = read(fd, &mut buff)?;
+        let len = read(&fd, &mut buff)?;
 
         dbg!(len);
 
